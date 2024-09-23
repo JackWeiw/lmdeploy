@@ -37,6 +37,9 @@ class AscendOpsBackend(DefaultOpsBackend):
         elif layer_type == OpType.FusedMoE:
             from .moe import AscendFusedMoEBuilder
             return AscendFusedMoEBuilder
+        elif layer_type == OpType.Linear:
+            from .linear import AscendLinearBuilder
+            return AscendLinearBuilder
         else:
             logger.debug(
                 f'Op {layer_type} fallback to default implementation.')
@@ -74,7 +77,7 @@ class AscendOpsBackend(DefaultOpsBackend):
     @classmethod
     def update_step_context(cls, step_context):
         """update step context."""
-        kv_start_indices, attention_mask = [], []
+        kv_start_indices, attention_mask, block_table_atb = [], [], []
         _, block_size, _ = step_context.kv_caches[0][0].shape
         device = step_context.block_offsets.device
 
@@ -85,33 +88,39 @@ class AscendOpsBackend(DefaultOpsBackend):
         max_q_seq_len = torch.max(q_seqlens_cpu).item()
         max_kv_seq_len = torch.max(kv_seqlens_cpu).item()
 
+        mask_dtype =  step_context.kv_caches[0][0].dtype
         if not step_context.is_decoding:
             is_unpaged_prefill = \
                 all((step_context.q_seqlens ==
                      step_context.kv_seqlens).tolist())
             if is_unpaged_prefill:
-                single_attention_mask = torch.logical_not(
-                    torch.tril(
-                        torch.ones(max_q_seq_len,
-                                   max_kv_seq_len,
-                                   dtype=torch.bool).cuda(),
-                        diagonal=max_kv_seq_len - max_q_seq_len,
-                    ))
-                attention_mask.append(single_attention_mask)
+                for i in range(step_context.q_start_loc.size(0)):
+                    single_attention_mask = torch.logical_not(
+                        torch.tril(
+                            torch.ones(max_q_seq_len,
+                                    max_kv_seq_len,
+                                    dtype=mask_dtype).cuda(),
+                            diagonal=max_kv_seq_len - max_q_seq_len,
+                        ))
+                    attention_mask.append(single_attention_mask)
         for i in range(step_context.q_start_loc.size(0)):
             q_seq_len = int(step_context.q_seqlens[i])
             kv_seq_len = int(step_context.kv_seqlens[i])
             if not (step_context.is_decoding or is_unpaged_prefill):
+                # import pdb; pdb.set_trace()
+                print("##########mask_dtype", mask_dtype)
+                # single_attention_mask = torch.cat([torch.zeros(1, step_context.q_seqlens[i], dtype = mask_dtype),
+                #     torch.ones(1, step_context.kv_seqlens[i] - step_context.q_seqlens[i], dtype = mask_dtype)], dim = 1).cuda()
                 single_attention_mask = torch.logical_not(
                     torch.tril(
-                        torch.ones(step_context.q_seqlens[i],
-                                   step_context.block_offsets.shape[1] *
-                                   block_size,
-                                   dtype=torch.bool).cuda(),
+                        torch.ones(max_q_seq_len,
+                                   max_kv_seq_len,
+                                   dtype=mask_dtype).cuda(),
                         diagonal=step_context.kv_seqlens[i] -
                         step_context.q_seqlens[i],
                     ))
-                attention_mask.append(single_attention_mask)
+                
+                attention_mask.append(single_attention_mask.unsqueeze(1))
             history_length = kv_seq_len - q_seq_len
             block_idx = history_length // block_size
             block_loc = step_context.block_offsets[i][block_idx]
@@ -124,7 +133,8 @@ class AscendOpsBackend(DefaultOpsBackend):
                 block_idx = block_idx if token_loc else block_idx + 1
                 block_loc = step_context.block_offsets[i][block_idx]
         kv_start_indices = torch.tensor(kv_start_indices, device=device)
-
+        if len(attention_mask) > 0:
+            attention_mask = torch.stack(attention_mask, dim = 0)
         attn_meta_cls = cls.get_attention_metadata_cls()
         attn_metadata = attn_meta_cls(
             step_context.is_decoding,

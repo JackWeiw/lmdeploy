@@ -5,6 +5,8 @@ from .fill_kv_cache import fill_kv_cache
 from .moe_gating_topk_softmax import moe_gating_topk_softmax
 from .pagedattention import paged_attention_fwd
 from .rms_norm import rms_norm
+from .linear import linear
+
 
 __all__ = [
     'rms_norm',
@@ -13,4 +15,5 @@ __all__ = [
     'paged_attention_fwd',
     'moe_gating_topk_softmax',
     'multinomial_sampling',
+    'linear',
 ]

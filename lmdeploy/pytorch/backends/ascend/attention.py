@@ -9,6 +9,8 @@ from ..attention import AttentionBuilder, AttentionImpl, AttentionMetadata
 
 @dataclass
 class AscendAttentionMetadata(AttentionMetadata):
+    block_table_atb: Optional[Tensor] = None
+    kv_seq_len_atb: Optional[Tensor] = None
     kv_start_indices: Optional[Tensor] = None
     block_size: int = 64
     attention_mask: Sequence[Tensor] = tuple()
@@ -60,7 +62,8 @@ class AscendAttentionImpl(AttentionImpl[AscendAttentionMetadata]):
         inplace: bool = True,
     ) -> Tensor:
         """forward."""
-
+        block_tabl_atb = attn_metadata.block_table_atb
+        kv_seqlen_atb = attn_metadata.kv_seq_len_atb
         block_offsets = attn_metadata.block_offsets
         q_start_loc = attn_metadata.q_start_loc
         q_seqlens = attn_metadata.q_seqlens
@@ -91,10 +94,10 @@ class AscendAttentionImpl(AttentionImpl[AscendAttentionMetadata]):
             attn_output,
             k_cache,
             v_cache,
-            block_offsets,
+            block_tabl_atb,
             q_start_loc=q_start_loc,
             q_seqlens=q_seqlens,
-            kv_seqlens=kv_seqlens,
+            kv_seqlens=kv_seqlen_atb,
             max_q_seq_len=max_q_seq_len,
             max_kv_seq_len=max_kv_seq_len,
             is_decoding=is_decoding,

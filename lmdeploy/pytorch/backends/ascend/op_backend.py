@@ -102,8 +102,8 @@ class AscendOpsBackend(DefaultOpsBackend):
                                    device=device)
         total_slots = total_slots.view(block_num, block_size)                    
         for i in range(step_context.q_start_loc.size(0)):
-            q_seq_len = int(step_context.q_seqlens[i])
-            kv_seq_len = int(step_context.kv_seqlens[i])
+            q_seq_len = int(q_seqlens_cpu[i])
+            kv_seq_len = int(kv_seqlens_cpu[i])
             if not (step_context.is_decoding or is_unpaged_prefill):
                 # 第二轮 mask 的形状为 (batch, 1, max_kv_seq_len)
                 # single_attention_mask = torch.cat([torch.zeros(1, step_context.kv_seqlens[i] - step_context.q_seqlens[i], dtype = mask_dtype),
@@ -113,11 +113,10 @@ class AscendOpsBackend(DefaultOpsBackend):
                 # # 第二轮 mask 的形状为 (numtokens, 1, max_kv_seq_len) 效果较好！！！
                 single_attention_mask = torch.logical_not(
                     torch.tril(
-                        torch.ones(max_q_seq_len,
+                        torch.ones(q_seq_len,
                                    max_kv_seq_len,
                                    dtype=torch.bool).cuda(),
-                        diagonal=kv_seqlens_cpu[i] -
-                        q_seqlens_cpu[i],
+                        diagonal=kv_seq_len - q_seq_len,
                     ))
                 attention_mask.append(single_attention_mask.unsqueeze(1))
                 

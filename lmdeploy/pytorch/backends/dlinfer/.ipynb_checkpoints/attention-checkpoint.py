@@ -74,10 +74,10 @@ class DlinferAttentionImpl(AttentionImpl[DlinferAttentionMetadata]):
         is_unpaged_prefill = attn_metadata.is_unpaged_prefill
         max_q_seq_len = attn_metadata.max_q_seq_len
         max_kv_seq_len = attn_metadata.max_kv_seq_len
-
+        import pdb; pdb.set_trace()
         # fill kv cache
-        # k_cache, v_cache = self.fill_kv_cache(key, value, k_cache, v_cache,
-        #                                       kv_start_indices)
+        k_cache, v_cache = self.fill_kv_cache(key, value, k_cache, v_cache,
+                                              kv_start_indices)
 
         if inplace:
             attn_output = query[..., :self.v_head_size]

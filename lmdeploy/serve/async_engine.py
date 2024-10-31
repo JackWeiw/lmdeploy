@@ -588,7 +588,7 @@ class AsyncEngine(LogitsMixin):
                     res, tokens = input_ids + outputs.token_ids, outputs.num_token  # noqa
                     if len(res) <= state.ids_offset:
                         continue
-
+                    import pdb; pdb.set_trace()
                     ids_offset = state.ids_offset
                     response, state = self.tokenizer.detokenize_incrementally(
                         res,

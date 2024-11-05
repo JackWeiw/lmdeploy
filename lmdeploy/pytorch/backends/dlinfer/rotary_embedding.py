@@ -35,8 +35,7 @@ class DlinferRotaryEmbeddingImpl(RotaryEmbeddingImpl, nn.Module):
             position_ids = position_ids.float() / self.scaling_factor
         else:
             position_ids = position_ids.float()
-
-        inv_freq_expanded = self.inv_freq.view(1, -1, 1)
+        inv_freq_expanded = self.inv_freq.view(1, -1, 1).expand(position_ids.shape[0], -1, 1)
         position_ids_expanded = position_ids.unsqueeze(1)
 
         # # Force float32 since bfloat16 loses precision on long contexts

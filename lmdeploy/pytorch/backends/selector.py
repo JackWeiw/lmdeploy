@@ -18,5 +18,8 @@ def get_backend():
     if device_type == 'maca':
         from .dlinfer import MacaOpsBackend
         return MacaOpsBackend
+    if device_type == 'dcu':
+        from .dlinfer import DcuOpsBackend
+        return DcuOpsBackend
     else:
         raise RuntimeError(f'Unsupported device type: {device_type}')

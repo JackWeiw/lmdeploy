@@ -91,7 +91,7 @@ class MacaOpsBackend(DlinferOpsBackend):
             slots = slot_tables[slot_indices].reshape((-1, 1))
             kv_start_indices.append(slots)
         kv_start_indices = torch.cat(kv_start_indices)
-
+        import pbd; pdb.set_trace()
         attn_meta_cls = cls.get_attention_metadata_cls()
         attn_metadata = attn_meta_cls(
             step_context.is_decoding,

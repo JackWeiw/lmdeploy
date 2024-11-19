@@ -389,5 +389,7 @@ def is_bf16_supported(device_type: str = 'cuda'):
         #     return False
     elif device_type == 'maca':
         return True
+    elif device_type == 'dcu':
+        return True
     else:
         return False

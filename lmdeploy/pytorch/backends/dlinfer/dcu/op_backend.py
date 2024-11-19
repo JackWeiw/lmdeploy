@@ -90,10 +90,10 @@ class DcuOpsBackend(DlinferOpsBackend):
             kv_start_indices = torch.cat(kv_start_indices)
         else:
             idx = (step_context.kv_seqlens - 1) % block_size
-            block_num = step_context.kv_seqlens // block_size
+            block_num = (step_context.kv_seqlens - 1) // block_size
             last_block = step_context.block_offsets.gather(1, block_num.view(-1,1)).view(-1)
             kv_start_indices = last_block * block_size + idx
-            
+
         attn_meta_cls = cls.get_attention_metadata_cls()
         attn_metadata = attn_meta_cls(
             step_context.is_decoding,

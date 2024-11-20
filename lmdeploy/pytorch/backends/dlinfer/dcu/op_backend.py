@@ -39,7 +39,7 @@ class DcuOpsBackend(DlinferOpsBackend):
     @classmethod
     def update_step_context(cls, step_context):
         """update step context."""
-        kv_start_indices, attention_mask = [], []
+        kv_start_indices = []
         block_num, block_size, _, _ = step_context.kv_caches[0][0].shape
         device = step_context.block_offsets.device
 
@@ -55,44 +55,24 @@ class DcuOpsBackend(DlinferOpsBackend):
             is_unpaged_prefill = \
                 all((step_context.q_seqlens ==
                      step_context.kv_seqlens).tolist())
-            if is_unpaged_prefill:
-                single_attention_mask = torch.logical_not(
-                    torch.tril(
-                        torch.ones(max_q_seq_len,
-                                   max_kv_seq_len,
-                                   dtype=torch.bool).cuda(),
-                        diagonal=max_kv_seq_len - max_q_seq_len,
-                    ))
-                attention_mask.append(single_attention_mask)
-            total_slots = torch.arange(block_num * block_size,
-                                    dtype=torch.long,
-                                    device=device)
-            total_slots = total_slots.view(block_num, block_size)
-            for i in range(step_context.q_start_loc.size(0)):
-                q_seq_len = int(step_context.q_seqlens[i])
-                kv_seq_len = int(step_context.kv_seqlens[i])
-                if not (step_context.is_decoding or is_unpaged_prefill):
-                    single_attention_mask = torch.logical_not(
-                        torch.tril(
-                            torch.ones(step_context.q_seqlens[i],
-                                    step_context.block_offsets.shape[1] *
-                                    block_size,
-                                    dtype=torch.bool).cuda(),
-                            diagonal=step_context.kv_seqlens[i] -
-                            step_context.q_seqlens[i],
-                        ))
-                    attention_mask.append(single_attention_mask)
-                history_length = kv_seq_len - q_seq_len
-                slot_tables = total_slots[step_context.block_offsets[i]].flatten()
-                slot_indices = [p for p in range(history_length, kv_seq_len)]
-                slots = slot_tables[slot_indices].reshape((-1, 1))
-                kv_start_indices.append(slots)
-            kv_start_indices = torch.cat(kv_start_indices)
-        else:
-            idx = (step_context.kv_seqlens - 1) % block_size
-            block_num = (step_context.kv_seqlens - 1) // block_size
-            last_block = step_context.block_offsets.gather(1, block_num.view(-1,1)).view(-1)
-            kv_start_indices = last_block * block_size + idx
+        total_slots = torch.arange(block_num * block_size,
+                                dtype=torch.long,
+                                device=device)
+        total_slots = total_slots.view(block_num, block_size)
+        for i in range(step_context.q_start_loc.size(0)):
+            q_seq_len = int(step_context.q_seqlens[i])
+            kv_seq_len = int(step_context.kv_seqlens[i])
+            history_length = kv_seq_len - q_seq_len
+            slot_tables = total_slots[step_context.block_offsets[i]].flatten()
+            slot_indices = [p for p in range(history_length, kv_seq_len)]
+            slots = slot_tables[slot_indices].reshape((-1, 1))
+            kv_start_indices.append(slots)
+        kv_start_indices = torch.cat(kv_start_indices)
+        # else:
+        #     idx = (step_context.kv_seqlens - 1) % block_size
+        #     block_num = (step_context.kv_seqlens - 1) // block_size
+        #     last_block = step_context.block_offsets.gather(1, block_num.view(-1,1)).view(-1)
+        #     kv_start_indices = last_block * block_size + idx
 
         attn_meta_cls = cls.get_attention_metadata_cls()
         attn_metadata = attn_meta_cls(
@@ -103,7 +83,7 @@ class DcuOpsBackend(DlinferOpsBackend):
             kv_seqlens=kv_seqlens,
             kv_start_indices=kv_start_indices,
             block_size=block_size,
-            attention_mask=attention_mask,
+            attention_mask=None,
             is_unpaged_prefill=is_unpaged_prefill,
             max_q_seq_len=max_q_seq_len,
             max_kv_seq_len=max_kv_seq_len,

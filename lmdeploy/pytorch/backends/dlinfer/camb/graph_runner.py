@@ -18,7 +18,7 @@ logger = get_logger('lmdeploy')
 BuffType = Dict[str, Tensor]
 
 def round_up_to_multiple_of_8(n: int):
-    return (n + 7) // 8 * 8
+    return (n + 7) // 8 * 8 + 8
 
 
 def _false(*args, **kwargs):
@@ -154,7 +154,8 @@ class CAMBSingleGraphRunner:
         # if kv_seqlens.data_ptr() != input_buffers['kv_seqlens'].data_ptr():
         #     input_buffers['kv_seqlens'].zero_()
         input_buffers['kv_seqlens'][:batch_size] = kv_seqlens
-        input_buffers['q_start_loc'][:batch_size] = q_start_loc
+        # import pdb; pdb.set_trace()
+        input_buffers['q_start_loc'][:batch_size+1] = q_start_loc
         
 
         input_buffers['kv_start_indices'][:num_tokens] = kv_start_indices[:num_tokens]

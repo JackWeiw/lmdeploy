@@ -76,9 +76,6 @@ class DlinferAttentionImpl(AttentionImpl[DlinferAttentionMetadata]):
         is_unpaged_prefill = attn_metadata.is_unpaged_prefill
         max_q_seq_len = attn_metadata.max_q_seq_len
         max_kv_seq_len = attn_metadata.max_kv_seq_len
-        cu_seqlens = attn_metadata.cu_seqlens
-        is_mock_q_start_loc = attn_metadata.is_mock_q_start_loc
-
         # fill kv cache
         k_cache, v_cache = self.fill_kv_cache(key, value, k_cache, v_cache,
                                               kv_start_indices)
@@ -86,9 +83,6 @@ class DlinferAttentionImpl(AttentionImpl[DlinferAttentionMetadata]):
         if is_unpaged_prefill:
             inplace = inplace if attn_metadata.is_flash_attn_support_inplace \
                     else False
-
-        if is_mock_q_start_loc:
-            q_start_loc = cu_seqlens
 
         if inplace:
             attn_output = query[..., :self.v_head_size]

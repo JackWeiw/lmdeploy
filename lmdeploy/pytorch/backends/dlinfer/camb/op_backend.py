@@ -14,7 +14,8 @@ logger = get_logger('lmdeploy')
 
 class CambOpsBackend(DlinferOpsBackend):
     """camb layer backend."""
-
+    total_slots = None
+    
     @staticmethod
     def get_name() -> str:
         """backend name."""
@@ -49,8 +50,17 @@ class CambOpsBackend(DlinferOpsBackend):
     @classmethod
     def update_step_context(cls, step_context):
         """update step context."""
+        def get_total_slots():
+            if cls.total_slots is None:
+                cls.total_slots = torch.arange(
+                    block_num * block_size,
+                    dtype=torch.int32,
+                    device=step_context.block_offsets.device)
+                cls.total_slots = cls.total_slots.view(block_num, block_size)
+            return cls.total_slots
+        
         kv_start_indices, attention_mask = [], []
-        _, _, block_size, _ = step_context.kv_caches[0][0].shape
+        block_num, _, block_size, _ = step_context.kv_caches[0][0].shape
         device = step_context.block_offsets.device
         batch_size = step_context.q_start_loc.shape[0]
 
@@ -61,36 +71,56 @@ class CambOpsBackend(DlinferOpsBackend):
         max_q_seq_len = torch.max(q_seqlens).cpu().item()
         max_kv_seq_len = torch.max(kv_seqlens).cpu().item()
 
-        cu_seqlens = torch.zeros(batch_size+1, dtype=torch.int32, device=device)
-        cu_seqlens[:-1] = step_context.q_start_loc
-        cu_seqlens[-1] = step_context.q_seqlens.sum()
-
+        cu_seqlens = torch.cat((step_context.q_start_loc, step_context.q_seqlens.sum().unsqueeze(0))).int()
+        
+        q_seqlens_list = step_context.q_seqlens.tolist()
+        kv_seqlens_list = step_context.kv_seqlens.tolist()
         if not step_context.is_decoding:
             is_unpaged_prefill = \
                 all((step_context.q_seqlens ==
                      step_context.kv_seqlens).tolist())
+        if not step_context.is_decoding:
+            is_unpaged_prefill = \
+                all((step_context.q_seqlens ==
+                     step_context.kv_seqlens).tolist())
+            # get kv_indices
+            for i in range(step_context.q_start_loc.size(0)):
+                q_seq_len = q_seqlens_list[i]
+                kv_seq_len = kv_seqlens_list[i]
+                # collect kv start indices.
+                history_length = kv_seq_len - q_seq_len
+                total_slots = get_total_slots()
+                slot_tables = total_slots[step_context.block_offsets[i]].view(-1)
+                slots = slot_tables[history_length:kv_seq_len]
+                kv_start_indices.append(slots)
 
-        for i in range(batch_size):
-            q_seq_len = int(step_context.q_seqlens[i])
-            kv_seq_len = int(step_context.kv_seqlens[i])
-            history_length = kv_seq_len - q_seq_len
-            block_idx = history_length // block_size
-            block_loc = step_context.block_offsets[i][block_idx]
-            token_loc = history_length % block_size
-            for j in range(q_seq_len):
-                kv_start_indices.append(block_loc * block_size + token_loc)
-                if j == q_seq_len - 1:
-                    break
-                token_loc = (token_loc + 1) % block_size
-                block_idx = block_idx if token_loc else block_idx + 1
-                block_loc = step_context.block_offsets[i][block_idx]
-        kv_start_indices = torch.tensor(kv_start_indices, device=device, dtype=torch.int32)
+                # collect attention mask of paged_prefill attention stage.
+                if not (step_context.is_decoding or is_unpaged_prefill):
+                    single_attention_mask = torch.logical_not(
+                        torch.tril(
+                            torch.ones(q_seq_len,
+                                    step_context.block_offsets.shape[1] *
+                                    block_size,
+                                    dtype=torch.bool,
+                                    device=step_context.block_offsets.device),
+                            diagonal=kv_seq_len - q_seq_len,
+                        ))
+                    attention_mask.append(single_attention_mask)
+            kv_start_indices = torch.cat(kv_start_indices)
+        else:
+            # collect kv_start_indices without using a for-loop,
+            # (fill kv-cache for just ONE token during the decoding phase)
+            idx = (step_context.kv_seqlens - 1) % block_size
+            block_num = (step_context.kv_seqlens - 1) // block_size
+            last_block = step_context.block_offsets.gather(
+                1, block_num.view(-1, 1)).view(-1)
+            kv_start_indices = last_block * block_size + idx
 
         attn_meta_cls = cls.get_attention_metadata_cls()
         attn_metadata = attn_meta_cls(
             step_context.is_decoding,
             step_context.block_offsets.to(torch.int32),
-            q_start_loc=q_start_loc,
+            q_start_loc=cu_seqlens,
             q_seqlens=q_seqlens,
             kv_seqlens=kv_seqlens,
             kv_start_indices=kv_start_indices,
@@ -99,11 +129,9 @@ class CambOpsBackend(DlinferOpsBackend):
             is_unpaged_prefill=is_unpaged_prefill,
             max_q_seq_len=max_q_seq_len,
             max_kv_seq_len=max_kv_seq_len,
-            cu_seqlens=cu_seqlens,
             is_flash_attn_support_inplace=False,
-            is_mock_q_start_loc=True,
         )
-
+        
         step_context.attn_metadata = attn_metadata
         return step_context
 

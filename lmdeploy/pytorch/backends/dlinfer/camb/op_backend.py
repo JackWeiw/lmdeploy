@@ -74,8 +74,7 @@ class CambOpsBackend(DlinferOpsBackend):
         q_seqlens_list = step_context.q_seqlens.tolist()
         kv_seqlens_list = step_context.kv_seqlens.tolist()
         if not step_context.is_decoding:
-            is_unpaged_prefill = \
-                all(q_seqlens_list == kv_seqlens_list)
+            is_unpaged_prefill = q_seqlens_list == kv_seqlens_list
             # get kv_indices
             for i in range(step_context.q_start_loc.size(0)):
                 q_seq_len = q_seqlens_list[i]

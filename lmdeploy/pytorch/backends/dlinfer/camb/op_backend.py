@@ -59,10 +59,8 @@ class CambOpsBackend(DlinferOpsBackend):
                 cls.total_slots = cls.total_slots.view(block_num, block_size)
             return cls.total_slots
         
-        kv_start_indices, attention_mask = [], []
+        kv_start_indices = []
         block_num, _, block_size, _ = step_context.kv_caches[0][0].shape
-        device = step_context.block_offsets.device
-        batch_size = step_context.q_start_loc.shape[0]
 
         is_unpaged_prefill = False
         q_start_loc = step_context.q_start_loc
@@ -77,12 +75,7 @@ class CambOpsBackend(DlinferOpsBackend):
         kv_seqlens_list = step_context.kv_seqlens.tolist()
         if not step_context.is_decoding:
             is_unpaged_prefill = \
-                all((step_context.q_seqlens ==
-                     step_context.kv_seqlens).tolist())
-        if not step_context.is_decoding:
-            is_unpaged_prefill = \
-                all((step_context.q_seqlens ==
-                     step_context.kv_seqlens).tolist())
+                all(q_seqlens_list == kv_seqlens_list)
             # get kv_indices
             for i in range(step_context.q_start_loc.size(0)):
                 q_seq_len = q_seqlens_list[i]
@@ -93,19 +86,6 @@ class CambOpsBackend(DlinferOpsBackend):
                 slot_tables = total_slots[step_context.block_offsets[i]].view(-1)
                 slots = slot_tables[history_length:kv_seq_len]
                 kv_start_indices.append(slots)
-
-                # collect attention mask of paged_prefill attention stage.
-                if not (step_context.is_decoding or is_unpaged_prefill):
-                    single_attention_mask = torch.logical_not(
-                        torch.tril(
-                            torch.ones(q_seq_len,
-                                    step_context.block_offsets.shape[1] *
-                                    block_size,
-                                    dtype=torch.bool,
-                                    device=step_context.block_offsets.device),
-                            diagonal=kv_seq_len - q_seq_len,
-                        ))
-                    attention_mask.append(single_attention_mask)
             kv_start_indices = torch.cat(kv_start_indices)
         else:
             # collect kv_start_indices without using a for-loop,

@@ -66,23 +66,24 @@ class CambOpsBackend(DlinferOpsBackend):
         q_start_loc = step_context.q_start_loc
         q_seqlens = step_context.q_seqlens
         kv_seqlens = step_context.kv_seqlens.to(torch.int32)
+        block_offsets = step_context.block_offsets.to(torch.int32)
         max_q_seq_len = torch.max(q_seqlens).cpu().item()
         max_kv_seq_len = torch.max(kv_seqlens).cpu().item()
 
-        cu_seqlens = torch.cat((step_context.q_start_loc, step_context.q_seqlens.sum().unsqueeze(0))).int()
+        cu_seqlens = torch.cat((q_start_loc, q_seqlens.sum().unsqueeze(0))).int()
         
         q_seqlens_list = step_context.q_seqlens.tolist()
         kv_seqlens_list = step_context.kv_seqlens.tolist()
         if not step_context.is_decoding:
-            is_unpaged_prefill = q_seqlens_list == kv_seqlens_list
+            is_unpaged_prefill = q_seqlens_list == kv_seqlens_list        
             # get kv_indices
-            for i in range(step_context.q_start_loc.size(0)):
+            for i in range(q_start_loc.size(0)):
                 q_seq_len = q_seqlens_list[i]
                 kv_seq_len = kv_seqlens_list[i]
                 # collect kv start indices.
                 history_length = kv_seq_len - q_seq_len
                 total_slots = get_total_slots()
-                slot_tables = total_slots[step_context.block_offsets[i]].view(-1)
+                slot_tables = total_slots[block_offsets[i]].view(-1)
                 slots = slot_tables[history_length:kv_seq_len]
                 kv_start_indices.append(slots)
             kv_start_indices = torch.cat(kv_start_indices)
@@ -91,14 +92,14 @@ class CambOpsBackend(DlinferOpsBackend):
             # (fill kv-cache for just ONE token during the decoding phase)
             idx = (step_context.kv_seqlens - 1) % block_size
             block_num = (step_context.kv_seqlens - 1) // block_size
-            last_block = step_context.block_offsets.gather(
+            last_block = block_offsets.gather( # dtype of gather must be int64
                 1, block_num.view(-1, 1)).view(-1)
-            kv_start_indices = last_block * block_size + idx
+            kv_start_indices = (last_block * block_size + idx).to(torch.int32)
 
         attn_meta_cls = cls.get_attention_metadata_cls()
         attn_metadata = attn_meta_cls(
             step_context.is_decoding,
-            step_context.block_offsets.to(torch.int32),
+            block_offsets,
             q_start_loc=cu_seqlens,
             q_seqlens=q_seqlens,
             kv_seqlens=kv_seqlens,
@@ -108,7 +109,6 @@ class CambOpsBackend(DlinferOpsBackend):
             is_unpaged_prefill=is_unpaged_prefill,
             max_q_seq_len=max_q_seq_len,
             max_kv_seq_len=max_kv_seq_len,
-            is_flash_attn_support_inplace=False,
         )
         
         step_context.attn_metadata = attn_metadata

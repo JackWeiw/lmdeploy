@@ -15,8 +15,7 @@ class DlinferAttentionMetadata(AttentionMetadata):
     is_unpaged_prefill: Optional[bool] = None
     max_q_seq_len: int = 1
     max_kv_seq_len: int = 1
-    cu_seqlens: Optional[Tensor] = None
-
+    cu_seq_lens_kv: Optional[Tensor] = None
 class DlinferAttentionImpl(AttentionImpl[DlinferAttentionMetadata]):
     """dlinfer attention implementation."""
 
@@ -74,6 +73,7 @@ class DlinferAttentionImpl(AttentionImpl[DlinferAttentionMetadata]):
         is_unpaged_prefill = attn_metadata.is_unpaged_prefill
         max_q_seq_len = attn_metadata.max_q_seq_len
         max_kv_seq_len = attn_metadata.max_kv_seq_len
+        cu_seq_lens_kv = attn_metadata.cu_seq_lens_kv
         # fill kv cache
         k_cache, v_cache = self.fill_kv_cache(key, value, k_cache, v_cache,
                                               kv_start_indices)
@@ -94,6 +94,7 @@ class DlinferAttentionImpl(AttentionImpl[DlinferAttentionMetadata]):
             v_cache,
             block_offsets,
             q_start_loc=q_start_loc,
+            cu_seq_lens_kv=cu_seq_lens_kv,
             q_seqlens=q_seqlens,
             kv_seqlens=kv_seqlens,
             max_q_seq_len=max_q_seq_len,

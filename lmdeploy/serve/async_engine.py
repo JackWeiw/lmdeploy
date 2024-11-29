@@ -730,3 +730,50 @@ class AsyncEngine(LogitsMixin):
         session.history.append((session._prompt, resp.text))
 
         return session
+
+
+    def chat_multi(self,
+                   prompts: List[str],
+                   sessions: List[Session],
+                   gen_config: Optional[GenerationConfig] = None,
+                   do_preprocess: bool = True,
+                   **kwargs):
+        """
+        multi-batch multi-conv chat.
+        """
+        prompt_num = len(prompts)
+        # sync & init
+        for i in range(prompt_num):
+            sessions[i]._prompt = prompts[i]
+            sessions[i]._response = None
+        sequence_start = [sessions[i]._step == 0 for i in range(prompt_num)]
+        resp_list = [Response('', -1, -1, sessions[i]._id) for i in range(prompt_num)]
+        generators = []
+        
+        for i, prompt in enumerate(prompts):
+            generators.append(
+                self.generate(prompt,
+                              session_id=sessions[i]._id,
+                              gen_config=gen_config,
+                              stream_response=False,
+                              sequence_start=sequence_start[i],
+                              sequence_end=False,
+                              step=sessions[i]._step,
+                              do_preprocess=do_preprocess,
+                              **kwargs))
+        
+        async def _inner_call(i, generator):
+            async for output in generator:
+                resp_list[i] = sessions[i]._merge_response(resp_list[i], output)
+        
+        async def gather():
+            await asyncio.gather(
+                *[_inner_call(i, generators[i]) for i in range(prompt_num)])
+
+        _get_event_loop().run_until_complete(gather())
+        for i in range(prompt_num):
+            sessions[i]._response = resp_list[i]
+            sessions[i]._step += resp_list[i].generate_token_len + resp_list[i].input_token_len
+            sessions[i].history.append((sessions[i]._prompt, resp_list[i].text))
+
+        return sessions

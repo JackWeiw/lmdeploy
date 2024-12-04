@@ -6,7 +6,6 @@ import torch
 from lmdeploy.pytorch.config import BackendConfig, CacheConfig, ModelConfig
 from lmdeploy.utils import get_logger
 
-from ...base import OpType
 from ..op_backend import DlinferOpsBackend
 
 logger = get_logger('lmdeploy')
@@ -71,7 +70,7 @@ class CambOpsBackend(DlinferOpsBackend):
         max_kv_seq_len = torch.max(kv_seqlens).cpu().item()
 
         cu_seqlens = torch.cat((q_start_loc, q_seqlens.sum().unsqueeze(0))).int()
-        cu_seq_lens_kv = torch.cat((torch.tensor([0], device=kv_seqlens.device), kv_seqlens.cumsum(0))).int()
+        cu_seq_lens_kv = None
         
         q_seqlens_list = step_context.q_seqlens.tolist()
         kv_seqlens_list = step_context.kv_seqlens.tolist()
@@ -88,6 +87,8 @@ class CambOpsBackend(DlinferOpsBackend):
                 slots = slot_tables[history_length:kv_seq_len]
                 kv_start_indices.append(slots)
             kv_start_indices = torch.cat(kv_start_indices)
+            if not is_unpaged_prefill:
+                cu_seq_lens_kv = torch.cat((torch.tensor([0], device=kv_seqlens.device), kv_seqlens.cumsum(0))).int()
         else:
             # collect kv_start_indices without using a for-loop,
             # (fill kv-cache for just ONE token during the decoding phase)

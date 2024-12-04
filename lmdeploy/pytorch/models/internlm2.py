@@ -428,4 +428,3 @@ class InternLM2ForCausalLM(nn.Module, CudaGraphMixin):
                 else:
                     param = params_dict[name]
                     load_weight(param, loaded_weight)
-

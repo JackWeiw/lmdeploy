@@ -2,8 +2,6 @@
 from typing import Any, Dict, List, Tuple
 
 import torch
-import torch_mlu
-from torch_mlu.utils.model_transfer import transfer
 from torch import Tensor
 
 from lmdeploy.pytorch.config import BackendConfig, CacheConfig, ModelConfig
@@ -16,6 +14,7 @@ from ...graph_runner import GraphRunner
 logger = get_logger('lmdeploy')
 
 BuffType = Dict[str, Tensor]
+
 
 def round_up_to_multiple_of_8(n: int):
     return (n + 7) // 8 * 8 + 8
@@ -60,14 +59,13 @@ class CAMBSingleGraphRunner:
 
     def capture(self, **kwargs):
         """capture graph."""
-        self.meta.input_buffers = self.make_camb_buffers(
-            self.meta, **kwargs)
+        self.meta.input_buffers = self.make_camb_buffers(self.meta, **kwargs)
         padded_kwargs = self.update_camb_buffer(self.meta, **kwargs)
 
         context = self.ctx_mgr.current_context()
         self.update_camb_context(self.meta, context)
         current_stream = torch.mlu.current_stream()
-        
+
         # warmup
         output = self.model(**padded_kwargs)
 
@@ -75,17 +73,17 @@ class CAMBSingleGraphRunner:
         # unsafe kernel call in other thread might invalid the capture
         # so we set thread_safe capture mode here.
         with torch.mlu.graph(self._graph,
-                              pool=self.pool,
-                              stream=current_stream,
-                              capture_error_mode='thread_local'):
+                             pool=self.pool,
+                             stream=current_stream,
+                             capture_error_mode='thread_local'):
             output = self.model(**padded_kwargs)
 
         output_buffers = dict(logits=output)
         self.meta.output_buffers = output_buffers
         return output
-    
+
     def make_camb_buffers(self, graph_meta: CudaGraphMeta, *args,
-                               **kwargs) -> BuffType:
+                          **kwargs) -> BuffType:
         """make cudagraph buffers from forward inputs."""
         max_batches = graph_meta.max_batchs
         max_tokens = graph_meta.max_tokens
@@ -98,39 +96,37 @@ class CAMBSingleGraphRunner:
                                                  dtype=torch.int32,
                                                  device=device)
         input_buffers['position_ids'] = torch.ones((1, max_tokens),
-                                                    dtype=torch.int32,
-                                                    device=device)
+                                                   dtype=torch.int32,
+                                                   device=device)
 
         input_buffers['block_offsets'] = torch.zeros((max_batches, num_blocks),
                                                      dtype=torch.int32,
                                                      device=device)
-        
+
         input_buffers['q_start_loc'] = torch.arange(max_batches,
-                                                   dtype=torch.int32,
-                                                   device=device)
-        
+                                                    dtype=torch.int32,
+                                                    device=device)
+
         input_buffers['q_seqlens'] = torch.ones(max_batches,
+                                                dtype=torch.int32,
+                                                device=device)
+
+        input_buffers['kv_seqlens'] = torch.ones(max_batches,
                                                  dtype=torch.int32,
                                                  device=device)
-        
-        input_buffers['kv_seqlens'] = torch.ones(max_batches,
-                                                  dtype=torch.int32,
-                                                  device=device)
-        
-        input_buffers['kv_start_indices'] = -torch.ones((max_batches*max_tokens),
-                                                  dtype=torch.int32,
-                                                  device=device)
+
+        input_buffers['kv_start_indices'] = -torch.ones(
+            (max_batches * max_tokens), dtype=torch.int32, device=device)
 
         input_buffers['local_adapter_ids'] = torch.zeros(max_batches,
                                                          dtype=torch.int32,
                                                          device=device)
         return input_buffers
-    
-    def update_camb_buffer(self, graph_meta: CudaGraphMeta,
-                               input_ids: Tensor, position_ids: Tensor,
-                               past_key_values: List, attn_metadata: Any,
-                               inputs_embeds: Tensor,
-                               **kwargs) -> Dict[str, Tensor]:
+
+    def update_camb_buffer(self, graph_meta: CudaGraphMeta, input_ids: Tensor,
+                           position_ids: Tensor, past_key_values: List,
+                           attn_metadata: Any, inputs_embeds: Tensor,
+                           **kwargs) -> Dict[str, Tensor]:
         """fill cudagraph buffers from forward inputs."""
         is_decoding = graph_meta.is_decoding
         block_offsets: Tensor = attn_metadata.block_offsets
@@ -155,11 +151,11 @@ class CAMBSingleGraphRunner:
         #     input_buffers['kv_seqlens'].zero_()
         input_buffers['kv_seqlens'][:batch_size] = kv_seqlens
         # import pdb; pdb.set_trace()
-        input_buffers['q_start_loc'][:batch_size+1] = q_start_loc
-        
+        input_buffers['q_start_loc'][:batch_size + 1] = q_start_loc
 
-        input_buffers['kv_start_indices'][:num_tokens] = kv_start_indices[:num_tokens]
-        
+        input_buffers[
+            'kv_start_indices'][:num_tokens] = kv_start_indices[:num_tokens]
+
         if inputs_embeds is not None:
             emb_size = inputs_embeds.size(-1)
             if 'inputs_embeds' not in input_buffers:
@@ -178,8 +174,9 @@ class CAMBSingleGraphRunner:
             'q_start_loc'][:new_batch_size]
         attn_metadata.q_seqlens = input_buffers['q_seqlens'][:new_batch_size]
         attn_metadata.kv_seqlens = input_buffers['kv_seqlens'][:new_batch_size]
-        
-        attn_metadata.kv_start_indices = input_buffers['kv_start_indices'][:new_num_tokens]
+
+        attn_metadata.kv_start_indices = input_buffers[
+            'kv_start_indices'][:new_num_tokens]
         new_inputs = dict(
             past_key_values=past_key_values,
             attn_metadata=attn_metadata,
@@ -219,14 +216,14 @@ class CAMBSingleGraphRunner:
         context.kv_seqlens = input_buffers['kv_seqlens']
         context.q_start_loc = input_buffers['q_start_loc']
         context.kv_start_indices = input_buffers['kv_start_indices']
-    
+
     def forward(self, **kwargs):
         """forward."""
         num_tokens = kwargs['input_ids'].size(-1)
         assert self._graph is not None
         self.update_camb_buffer(self.meta, **kwargs)
         context = self.ctx_mgr.current_context()
-        self.update_camb_context(self.meta,context)
+        self.update_camb_context(self.meta, context)
 
         self._graph.replay()
 
@@ -296,7 +293,7 @@ class CAMBGraphRunner(GraphRunner):
             self._runner_map[graph_key] = runner
         else:
             runner = self._runner_map[graph_key]
-            
+
         output = runner.forward(**kwargs)
         return output
 

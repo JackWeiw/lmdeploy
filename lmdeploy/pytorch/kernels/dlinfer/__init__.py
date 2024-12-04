@@ -1,5 +1,6 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 from ..default import multinomial_sampling
+from .activation import silu_and_mul
 from .apply_rotary_pos_emb import apply_rotary_pos_emb
 from .awq_kernels import awq_linear
 from .fill_kv_cache import fill_kv_cache
@@ -8,7 +9,6 @@ from .linear import linear
 from .moe_gating_topk_softmax import moe_gating_topk_softmax
 from .pagedattention import paged_attention_fwd
 from .rms_norm import rms_norm
-from .activation import silu_and_mul
 
 __all__ = [
     'rms_norm',

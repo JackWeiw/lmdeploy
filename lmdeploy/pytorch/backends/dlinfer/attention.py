@@ -16,6 +16,8 @@ class DlinferAttentionMetadata(AttentionMetadata):
     max_q_seq_len: int = 1
     max_kv_seq_len: int = 1
     cu_seq_lens_kv: Optional[Tensor] = None
+
+
 class DlinferAttentionImpl(AttentionImpl[DlinferAttentionMetadata]):
     """dlinfer attention implementation."""
 

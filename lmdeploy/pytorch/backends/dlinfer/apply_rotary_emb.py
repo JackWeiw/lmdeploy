@@ -6,6 +6,7 @@ from lmdeploy.pytorch.kernels.dlinfer import apply_rotary_pos_emb
 
 from ..apply_rotary_emb import ApplyRotaryEmbBuilder, ApplyRotaryEmbImpl
 
+
 class DlinferApplyRotaryEmbImpl(ApplyRotaryEmbImpl):
     """Apply rotary embedding implementation."""
 

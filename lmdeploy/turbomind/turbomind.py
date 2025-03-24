@@ -162,7 +162,7 @@ class TurboMind:
                     tm_params[k] = []
                 tm_params[k].append(v)
 
-    def _postprocess_config(self, tm_config, engine_config):
+    def _postprocess_config(self, tm_config: TurbomindModelConfig, engine_config: TurbomindEngineConfig):
         """postprocess turbomind config by."""
         import copy
         self.config = copy.deepcopy(tm_config)
@@ -334,7 +334,6 @@ def _get_logprobs_impl(logprob_vals: torch.Tensor,
         tok_res = {idx[i].item(): val[i].item() for i in range(topn)}
         token_id = output_ids[pos]
         if token_id not in tok_res:
-            print(token_id, tok_res)
             valid_n = n.item()
             tok_res[token_id] = \
                 val[:valid_n][idx[:valid_n] == token_id].item()

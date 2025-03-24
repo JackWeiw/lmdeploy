@@ -153,6 +153,21 @@ class ArgumentHelper:
                                    help='GPU number used in tensor parallelism. Should be 2^n')
 
     @staticmethod
+    def dp(parser):
+        """Add argument dp to parser."""
+
+        return parser.add_argument('--dp', type=int, default=1, help='data parallelism. dp_rank is required.')
+
+    @staticmethod
+    def dp_rank(parser):
+        """add argument dp_rank to parser."""
+
+        return parser.add_argument('--dp-rank',
+                                   type=int,
+                                   default=0,
+                                   help='data parallelism rank, all ranks between 0 ~ dp should be created.')
+
+    @staticmethod
     def session_id(parser):
         """Add argument session_id to parser."""
 
@@ -357,6 +372,28 @@ class ArgumentHelper:
             'A JSON file or string that specifies the chat template configuration. '  # noqa
             'Please refer to https://lmdeploy.readthedocs.io/en/latest/advance/chat_template.html for the specification'  # noqa
         )
+
+    @staticmethod
+    def reasoning_parser(parser):
+        """Add reasoning parser to parser."""
+        from lmdeploy.serve.openai.reasoning_parser import ReasoningParserManager
+        return parser.add_argument(
+            '--reasoning-parser',
+            type=str,
+            default=None,
+            help=f'The registered reasoning parser name from {ReasoningParserManager.module_dict.keys()}. '
+            'Default to None.')
+
+    @staticmethod
+    def tool_call_parser(parser):
+        """Add tool call parser to parser."""
+        from lmdeploy.serve.openai.tool_parser import ToolParserManager
+
+        return parser.add_argument(
+            '--tool-call-parser',
+            type=str,
+            default=None,
+            help=f'The registered tool parser name {ToolParserManager.module_dict.keys()}. Default to None.')
 
     @staticmethod
     def cache_max_entry_count(parser):

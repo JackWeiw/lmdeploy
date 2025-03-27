@@ -16,35 +16,6 @@ from ..op_backend import DlinferOpsBackend
 
 logger = get_logger('lmdeploy')
 
-# def round_up(x, align):
-#     if align == 0:
-#         return -1
-#     return (x + align - 1) // align * align
-
-# def custom_pad(x, pad_dims):
-#     return torch.nn.functional.pad(x, pad_dims)
-
-# def custom_reshape(x, target_shape):
-#     return x.reshape(target_shape)
-
-# def custom_transpose(x, dim1, dim2):
-#     return x.transpose(dim1, dim2)
-
-# # ND2NZ 2D
-# def nd_to_nz_2d(in_tensor):
-#     aux_dims = [0, 0, 0, 0]
-#     aux_dims[0] = 1
-#     aux_dims[1] = round_up(in_tensor.size(0), 16)
-#     pad_dims = [0, 0, 0, 0]
-#     pad_dims[3] = round_up(in_tensor.size(0), 16) - in_tensor.size(0)
-#     aux_dims[2] = round_up(in_tensor.size(1), 16) // 16
-#     aux_dims[3] = 16
-#     pad_dims[1] = round_up(in_tensor.size(1), 16) - in_tensor.size(1)
-#     return custom_transpose(custom_reshape(custom_pad(in_tensor, pad_dims), aux_dims),
-
-#     1, 2
-
-#     ).contiguous()
 class SocVersion:
     Ascend310P: str = 'Ascend310P'
     Ascend910B: str = 'Ascend910B'
@@ -223,7 +194,7 @@ class AscendOpsBackend(DlinferOpsBackend):
                         attention_mask.append(single_attention_mask)
                 else:
                     single_attention_mask = torch.triu(
-                            torch.ones(max_q_seq_len, max_kv_seq_len).fill_(-float('inf')).cuda(),
+                            torch.ones(max_q_seq_len, max_kv_seq_len, dtype=torch.float16).fill_(-float('inf')).cuda(),
                             diagonal=max_kv_seq_len - max_q_seq_len + 1,
                         )                    
                     attention_mask.append(single_attention_mask)
@@ -246,7 +217,6 @@ class AscendOpsBackend(DlinferOpsBackend):
             kv_seqlens = step_context.kv_seqlens.to(torch.int32)
             if not step_context.is_decoding:
                 if is_unpaged_prefill:
-                    # attention_mask = [torch_npu.npu_format_cast(mask.half(), 29) for mask in attention_mask]
                     attention_mask = [mask.half() for mask in attention_mask]
                 else:
                     attention_mask = [

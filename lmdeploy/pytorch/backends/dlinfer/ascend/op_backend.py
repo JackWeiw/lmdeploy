@@ -159,11 +159,10 @@ class AscendOpsBackend(DlinferOpsBackend):
             # prepare some params of unpaged_prefill attention stage.
             q_start_loc_cpu, kv_seqlens_cpu = None, None
             q_seqlens_cpu = step_context.q_seqlens.cpu()
-            single_attention_mask = torch.logical_not(
-                torch.tril(
-                    torch.ones(max_q_seq_len, max_kv_seq_len, dtype=torch.bool).cuda(),
-                    diagonal=max_kv_seq_len - max_q_seq_len,
-                ))
+            single_attention_mask = torch.triu(
+                        torch.ones(max_q_seq_len, max_kv_seq_len).fill_(-float('inf')).cuda(),
+                        diagonal=max_kv_seq_len - max_q_seq_len + 1,
+                    )            
             attention_mask.append(single_attention_mask)
         else:
             # prepare some params of paged_prefill attention stage.

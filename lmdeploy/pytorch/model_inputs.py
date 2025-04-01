@@ -11,11 +11,16 @@ from lmdeploy.pytorch.config import ModelConfig
 from lmdeploy.pytorch.multimodal.data_type import MultiModalTensor
 
 
-def _broadcast_tensor(value: torch.Tensor, src: int = 0, device: str = 'cuda'):
+def _broadcast_tensor(value: torch.Tensor, src: int = 0, device: str = 'cuda', group = None):
     """broadcast tensor."""
     if value.device.type == 'meta':
         value = torch.empty_like(value, device=device)
-    dist.broadcast(value, src)
+    origin_device = value.device
+    value = value.cpu()
+    dist.broadcast(value, src, group=group)
+    value = value.to(origin_device)
+    if value.device.type == 'meta':
+        value = value.to(device=device)
     return value
 
 
@@ -234,7 +239,7 @@ class ModelInputs:
 
         return ModelInputs(**out_dict)
 
-    def broadcast(self):
+    def broadcast(self, group: dist.ProcessGroup = None):
         """broadcast inputs.
 
         Do `dist.broadcast_object_list(inputs.to_device('meta'))`
@@ -245,7 +250,7 @@ class ModelInputs:
             k = f.name
             v = getattr(self, k)
             if isinstance(v, torch.Tensor):
-                v = _broadcast_tensor(v)
+                v = _broadcast_tensor(v, group = group)
             elif isinstance(v, VisionModelInputs):
                 v = v.broadcast()
             out_dict[k] = v

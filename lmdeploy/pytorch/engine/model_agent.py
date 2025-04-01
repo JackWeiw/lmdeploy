@@ -292,21 +292,19 @@ def _tp_build_model(
 
     def _broadcast_config(cache_config):
         """broadcast cache config, use minimum cache."""
-        if rank == 0:
-            gathered_configs = [None] * world_size
-            dist.gather_object(cache_config, gathered_configs)
-            num_gpu_blocks_list = [config.num_gpu_blocks for config in gathered_configs]
-            num_cpu_blocks_list = [config.num_cpu_blocks for config in gathered_configs]
-            min_num_gpu_blocks = min(num_gpu_blocks_list)
-            min_num_cpu_blocks = min(num_cpu_blocks_list)
-            cache_config.num_cpu_blocks = min_num_cpu_blocks
-            cache_config.num_gpu_blocks = min_num_gpu_blocks
-            config_list = [cache_config]
-        else:
-            gathered_configs = None
-            dist.gather_object(cache_config, gathered_configs)
-            config_list = [None]
-        dist.broadcast_object_list(config_list)
+        gathered_configs = [None] * world_size
+        dist.all_gather_object(gathered_configs,cache_config) 
+        num_gpu_blocks_list = [
+            config.num_gpu_blocks for config in gathered_configs
+        ]
+        num_cpu_blocks_list = [
+            config.num_cpu_blocks for config in gathered_configs
+        ]
+        min_num_gpu_blocks = min(num_gpu_blocks_list)
+        min_num_cpu_blocks = min(num_cpu_blocks_list)
+        cache_config.num_cpu_blocks = min_num_cpu_blocks
+        cache_config.num_gpu_blocks = min_num_gpu_blocks
+        config_list = [cache_config]
         return config_list[0]
 
     try:
@@ -358,9 +356,9 @@ def _broadcast_inputs(rank: int, inputs: Any, group: dist.group, stream: torch.c
     with torch.cuda.stream(stream):
         dist.broadcast_object_list(inputs, group=group)
         if rank == 0:
-            device_inputs.broadcast()
+            device_inputs.broadcast(group=group)
         else:
-            device_inputs = inputs[0].broadcast()
+            device_inputs = inputs[0].broadcast(group=group)
 
     inputs[0] = device_inputs
 
@@ -436,12 +434,13 @@ def _start_tp_process(proc_id: int,
     try:
         from lmdeploy.pytorch.check_env import check_env_deeplink
         check_env_deeplink(device_context.device_type)
+        torch.cuda.set_device(rank)
         timeout = timedelta(days=35600)
         dist.init_process_group('nccl', rank=rank, world_size=world_size, timeout=timeout)
         cpu_group = dist.new_group(timeout=timeout, backend='gloo')
         kwargs['cpu_group'] = cpu_group
         dist_ctx = DistContext(rank=rank, world_size=world_size)
-        torch.cuda.set_device(rank)
+
         with get_dist_manager().context(dist_ctx), get_device_manager().context(device_context), torch.inference_mode():
             args = args or tuple()
             kwargs = kwargs or dict()

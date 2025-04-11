@@ -98,10 +98,19 @@ class AscendOpsBackend(DlinferOpsBackend):
         head_size: int,
         dtype: torch.dtype,
     ) -> Tuple[int, ...]:
-        return (
-            block_size,
-            num_heads * head_size,
-        )
+        if SocVersion.is_Ascend910B():
+            return (
+                block_size,
+                num_heads * head_size,
+            )
+        elif SocVersion.is_Ascend310P():
+            return (
+                (num_heads * head_size + 15) // 16,
+                block_size,
+                16,
+            )
+        else:
+            raise ValueError(f'dlinfer does not support {SocVersion.device_name()} device currently.')
 
     @staticmethod
     def get_v_block_shape(
@@ -110,10 +119,19 @@ class AscendOpsBackend(DlinferOpsBackend):
         head_size: int,
         dtype: torch.dtype,
     ) -> Tuple[int, ...]:
-        return (
-            block_size,
-            num_heads * head_size,
-        )
+        if SocVersion.is_Ascend910B():
+            return (
+                block_size,
+                num_heads * head_size,
+            )
+        elif SocVersion.is_Ascend310P():
+            return (
+                (num_heads * head_size + 15) // 16,
+                block_size,
+                16,
+            )
+        else:
+            raise ValueError(f'dlinfer does not support {SocVersion.device_name()} device currently.')
 
     @classmethod
     def update_step_context(cls, step_context):
@@ -128,7 +146,7 @@ class AscendOpsBackend(DlinferOpsBackend):
             return cls.total_slots
 
         kv_start_indices, attention_mask = [], []
-        block_num, block_size, _ = step_context.kv_caches[0][0].shape
+        block_num, _, block_size, _ = step_context.kv_caches[0][0].shape
         is_unpaged_prefill = False
         if not step_context.is_decoding:
             is_unpaged_prefill = \
@@ -194,11 +212,10 @@ class AscendOpsBackend(DlinferOpsBackend):
                         single_attention_mask = torch.triu(single_attention_mask, diagonal=1)
                         attention_mask.append(single_attention_mask)
                 else:
-                    single_attention_mask = torch.logical_not(
-                        torch.tril(
-                            torch.ones(1, max_q_seq_len, max_kv_seq_len, dtype=torch.bool).cuda(),
-                            diagonal=max_kv_seq_len - max_q_seq_len,
-                        ))
+                    single_attention_mask = torch.triu(
+                             torch.ones(max_q_seq_len, max_kv_seq_len).fill_(-float('inf')).cuda(),
+                             diagonal=max_kv_seq_len - max_q_seq_len + 1,
+                         )    
                     attention_mask.append(single_attention_mask)
             else:
                 raise ValueError(f"dlinfer doesn't support {SocVersion.device_name()} device currently.")

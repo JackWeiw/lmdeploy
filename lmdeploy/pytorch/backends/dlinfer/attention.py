@@ -129,6 +129,8 @@ class DlinferAttentionImpl(AttentionImpl[DlinferAttentionMetadata]):
             cu_seq_lens_kv=cu_seq_lens_kv,
             max_q_seq_len=max_q_seq_len,
             max_kv_seq_len=max_kv_seq_len,
+            num_q_heads=self.num_heads,
+            num_kv_heads=self.num_kv_heads,
             is_decoding=is_decoding,
             block_size=block_size,
             attn_mask=attn_mask,

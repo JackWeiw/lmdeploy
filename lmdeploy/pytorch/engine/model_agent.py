@@ -449,9 +449,31 @@ class AutoModelAgent:
 
             if need_broadcast_next:
                 logger.debug(f'<ForwardTask> rank[{rank}]: synchornize token ids [{idx}]')
-                tp_gpu_group = dist_ctx.tp_gpu_group
+                tp_gpu_group = dist_ctx.tp_cpu_group
+                # print(f'rank: {rank}, before broadcast next_token_ids: {next_token_ids}')
+                # dist.broadcast(next_token_ids, src=rank // tp * tp, group=tp_gpu_group)
+                original_device = next_token_ids.device
+                next_token_ids = next_token_ids.cpu()
                 dist.broadcast(next_token_ids, src=rank // tp * tp, group=tp_gpu_group)
+                next_token_ids = next_token_ids.to(original_device)
+                # print(f'rank: {rank}, after broadcast next_token_ids: {next_token_ids}')  
+                '''
+                fail
+                src_rank = rank // tp * tp  # 计算源rank
 
+                if rank == src_rank:
+                    # 如果是源rank，将数据放入列表中
+                    gathered_list = [next_token_ids]
+                else:
+                    # 如果不是源rank，准备一个空列表
+                    gathered_list = [None]
+
+                # 使用all_gather_object收集所有数据
+                dist.all_gather_object(gathered_list, gathered_list[0], group=tp_gpu_group)
+
+                # 所有rank都从列表的第一个元素获取广播的数据
+                next_token_ids = gathered_list[0]  
+                '''
             # send output
             model_metas = output.get('model_metas')
             if need_output:

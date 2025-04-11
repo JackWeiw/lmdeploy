@@ -48,8 +48,18 @@ class InternVisionEmbeddings(nn.Module):
         target_dtype = pos_embed.dtype
         pos_embed = pos_embed.float().reshape(1, self.image_size // self.patch_size, self.image_size // self.patch_size,
                                               -1).permute(0, 3, 1, 2)
+        # import pdb; pdb.set_trace()
+        print("pos_embed.shape", pos_embed.shape, "H", H, "W", W, target_dtype, pos_embed.device)
+        # import torch.distributed as dist
+        # import pickle
+        # with open(f'/home/ubuntu/weitao/tmp/pos_embed_{dist.get_rank()}.pkl', 'wb') as f:
+        # # with open(f'/home/ubuntu/weitao/tmp/pos_embed_tp1.pkl', 'wb') as f:
+        #     pickle.dump(pos_embed.cpu(), f)
+        # import pdb; pdb.set_trace()
+        torch.npu.set_compile_mode(jit_compile=False)
         pos_embed = F.interpolate(pos_embed, size=(H, W), mode='bicubic',
                                   align_corners=False).reshape(1, -1, H * W).permute(0, 2, 1).to(target_dtype)
+        # import pdb; pdb.set_trace()
         return pos_embed
 
     def forward(self, pixel_values: torch.FloatTensor) -> torch.Tensor:
